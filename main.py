@@ -7,6 +7,7 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_openai import ChatOpenAI
 import os 
+import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,13 +19,23 @@ if not OPENAI_API_KEY:
 
 app = FastAPI()
 
-def search_pubmed_tool(disease: str, max_results: int = 5) -> str:
+def search_pubmed_tool(disease: str, max_results: int = 10) -> str:
     """
     search tool node TODO add doc comments
     """
     articles = search_pubmed_bioc(disease, max_results)
     if not articles:
         return "No articles found for the specified disease."
+    
+        # Create a directory to store files, if it doesn't exist
+    os.makedirs("articles", exist_ok=True)
+    
+    # Loop through each article and save it to a file
+    for i, article in enumerate(articles, start=1):
+        file_name = f"articles/{disease.replace(' ', '_').lower()}-{i}.txt"
+        with open(file_name, "w") as file:
+            file.write(f"Title: {article['title']}\n")
+            file.write(f"Abstract: {article['abstract']}\n")
     return "\n".join([f"Title: {article['title']}\nAbstract: {article['abstract']}\n" for article in articles])
 
 
@@ -34,7 +45,7 @@ model = ChatOpenAI(model="gpt-4-turbo", api_key=OPENAI_API_KEY)
 system_prompt = """
 You are a medical research assistant who helps users find comprehensive information on rare diseases.
 Depending on the complexity and detail required, you may use specialized tools to retrieve relevant PubMed articles.
-If you use the tool, integrate up to 4 titles and abstracts into your response. Do not display them directly; 
+If you use the tool, integrate up to 10 titles and abstracts into your response. Do not display them directly; 
 use them only as context to generate a structured and informative summary, including these sections:
 
 1. **Overview**: Define the disease and provide background, affected populations, and prevalence.
@@ -111,6 +122,16 @@ def chat_with_agent(user_query: UserQuery):
             
             if message.content and "tool_calls" not in message.additional_kwargs:
                 final_response = message.content
+        
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        disease_name = user_query.query.replace(" ", "_").lower()
+        file_name = f"chat_responses/{disease_name}_{timestamp}.txt"
+        
+        # Ensure the directory exists
+        os.makedirs("chat_responses", exist_ok=True)
+        with open(file_name, "w") as file:
+            file.write(f"Query: {user_query.query}\n")
+            file.write(f"Response:\n{final_response}\n")
 
         return {"response": final_response}
 
